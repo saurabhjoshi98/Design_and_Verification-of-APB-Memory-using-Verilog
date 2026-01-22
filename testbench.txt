@@ -1,0 +1,115 @@
+
+
+module tb_APB_memory;
+
+reg Pclk;
+reg Prst;
+reg Pselx;
+reg Penable;
+reg Pwrite;
+reg [31:0] Pwdata;
+reg [5:0] Paddr;
+
+wire Pready;
+wire Pslverr;
+wire [31:0] Prdata;
+wire [31:0] temp;
+
+// DUT instantiation
+APB_memory dut (
+.Pclk(Pclk),
+.Prst(Prst),
+.Pselx(Pselx),
+.Penable(Penable),
+.Pwrite(Pwrite),
+.Pwdata(Pwdata),
+.Paddr(Paddr),
+.Pready(Pready),
+.Pslverr(Pslverr),
+.Prdata(Prdata),
+.temp(temp)
+);
+
+// Clock generation (10ns period)
+always #5 Pclk = ~Pclk;
+
+// -------------------------------
+// APB WRITE TASK
+// -------------------------------
+task apb_write(input [5:0] addr, input [31:0] data);
+begin
+@(posedge Pclk);
+Pselx = 1;
+Pwrite = 1;
+Penable = 0;
+Paddr = addr;
+Pwdata = data;
+
+@(posedge Pclk);
+Penable = 1;
+
+@(posedge Pclk);
+Pselx = 0;
+Penable = 0;
+Pwrite = 0;
+end
+endtask
+
+// -------------------------------
+// APB READ TASK
+// -------------------------------
+task apb_read(input [5:0] addr);
+begin
+@(posedge Pclk);
+Pselx = 1;
+Pwrite = 0;
+Penable = 0;
+Paddr = addr;
+
+@(posedge Pclk);
+Penable = 1;
+
+@(posedge Pclk);
+Pselx = 0;
+Penable = 0;
+end
+endtask
+
+// -------------------------------
+// Test sequence
+// -------------------------------
+initial begin
+// Initialize signals
+Pclk = 0;
+Prst = 0;
+Pselx = 0;
+Penable = 0;
+Pwrite = 0;
+Pwdata = 0;
+Paddr = 0;
+
+// Apply reset
+#20 Prst = 1;
+
+// Write data
+apb_write(6'd5, 32'hA5A5A5A5);
+apb_write(6'd10, 32'h12345678);
+
+// Read data
+apb_read(6'd5);
+apb_read(6'd10);
+
+// Invalid address (error case)
+apb_write(6'd40, 32'hDEADBEEF);
+apb_read(6'd40);
+
+#50 $finish;
+end
+
+// Monitor
+initial begin
+$monitor("Time=%0t | Addr=%0d | Write=%b | Pwdata=%h | Prdata=%h | Pready=%b | Pslverr=%b",
+$time, Paddr, Pwrite, Pwdata, Prdata, Pready, Pslverr);
+end
+
+endmodule

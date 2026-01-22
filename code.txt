@@ -1,0 +1,102 @@
+module APB_memory (
+input Pclk,
+input Prst, // Active-low reset
+input Pselx,
+input Penable,
+input Pwrite,
+input [31:0] Pwdata,
+input [5:0] Paddr,
+
+output reg Pready,
+output reg Pslverr,
+output reg [31:0] Prdata,
+output reg [31:0] temp
+);
+
+// -------------------------------------------------
+// Memory declaration (32-depth, 32-bit wide)
+// -------------------------------------------------
+reg [31:0] mem [0:31];
+
+// -------------------------------------------------
+// State declaration
+// -------------------------------------------------
+parameter [1:0] IDLE = 2'b00;
+parameter [1:0] SETUP = 2'b01;
+parameter [1:0] ACCESS = 2'b10;
+
+reg [1:0] present_state, next_state;
+
+// -------------------------------------------------
+// State register (async active-low reset)
+// -------------------------------------------------
+always @(posedge Pclk or negedge Prst) begin
+if (!Prst)
+present_state <= IDLE;
+else
+present_state <= next_state;
+end
+
+// -------------------------------------------------
+// Next-state & output logic
+// -------------------------------------------------
+always @(*) begin
+// Default values
+next_state = present_state;
+Pready = 1'b0;
+Pslverr = 1'b0;
+Prdata = 32'd0;
+
+case (present_state)
+
+// ---------------- IDLE ----------------
+IDLE: begin
+if (Pselx)
+next_state = SETUP;
+end
+
+// ---------------- SETUP ----------------
+SETUP: begin
+if (Pselx)
+next_state = ACCESS;
+else
+next_state = IDLE;
+end
+
+// ---------------- ACCESS ----------------
+ACCESS: begin
+Pready = 1'b1;
+
+// Write operation
+if (Penable && Pwrite) begin
+if (Paddr > 6'd31) begin
+Pslverr = 1'b1;
+end
+else begin
+mem[Paddr] = Pwdata;
+temp = mem[Paddr];
+Pslverr = 1'b0;
+end
+end
+
+// Read operation
+else if (Penable && !Pwrite) begin
+if (Paddr > 6'd31) begin
+Pslverr = 1'b1;
+end
+else begin
+Prdata = mem[Paddr];
+Pslverr = 1'b0;
+end
+end
+
+// Go back to SETUP for next transfer
+if (!Penable)
+next_state = SETUP;
+end
+
+default: next_state = IDLE;
+endcase
+end
+
+endmodule
